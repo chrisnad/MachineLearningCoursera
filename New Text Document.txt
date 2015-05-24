@@ -1,1 +1,1 @@
-https://github.com/Xiaodan/Coursera-PML-Quantified-Self-Project/blob/gh-pages/report.md
+final predictions : B A B A A E D B A A B C B A E E A B B B
