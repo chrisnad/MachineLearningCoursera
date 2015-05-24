@@ -1,0 +1,117 @@
+---
+title: "Quantified Self Movement Data Analysis Report"
+author: "Cleitus"
+date: "Sunday, May 24, 2015"
+output: html_document
+---
+
+##Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.
+
+## Data Preprocessing
+
+First download and read the data into R. The data is split into two files, for training and testing.
+
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+```
+
+```{r}
+trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainFile <- "pml-training.csv"
+testFile  <- "pml-testing.csv"
+if (!file.exists(trainFile)) {
+  download.file(trainUrl, destfile=trainFile, method="curl")
+}
+if (!file.exists(testFile)) {
+  download.file(testUrl, destfile=testFile, method="curl")
+}
+
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+
+dim(train)
+dim(test)
+```
+
+The training data set contains 19622 observations and 160 variables, while the testing data set contains 20 observations and 160 variables. The "classe" variable is the outcome we will be trying to predict from a meaningful set of predictors from the 159 other variables in our possession.
+
+Further inspection of the data reveals lots of missing values, therefore it is necessary to clean our data frame.
+First, get rid of all empty columns (columns that contains only NA's).
+
+```{r}
+train <- train[, colSums(is.na(train)) == 0] 
+test <- test[, colSums(is.na(test)) == 0] 
+```
+
+Next, eliminate variables that do nut contribute much to the mesurments.
+
+```{r}
+classe <- train$classe
+remove <- grepl("^X|timestamp|window", names(train))
+train <- train[, !remove]
+train <- train[, sapply(train, is.numeric)]
+train$classe <- classe
+remove <- grepl("^X|timestamp|window", names(test))
+test <- test[, !remove]
+test <- test[, sapply(test, is.numeric)]
+```
+
+Now we are only dealing with the 53 variables that are left.
+
+Lastely we need to split the training set into a purely training set, and a validation set.
+
+```{r}
+set.seed(4128) # For reproducibility
+inTrain <- createDataPartition(train$classe, p=0.70, list=F)
+trainData <- train[inTrain, ]
+testData <- train[-inTrain, ]
+corrPlot <- cor(trainData[, -length(names(trainData))])
+corrplot(corrPlot, method="color")
+```
+
+## Prediction Model
+
+We fit a predictive model for activity recognition using a *Random Forest* algorithm because it automatically selects important variables and is robust to correlated covariates & outliers in general. We will use 5-fold *cross validation* when applying the algorithm.
+
+```{r, cache=TRUE}
+controlRF <- trainControl(method="cv", 5)
+modelRF <- train(classe ~ ., data=trainData, method="rf", trControl=controlRF, ntree=250)
+```
+
+```{r}
+modelRF
+treeModel <- rpart(classe ~ ., data=trainData, method="class")
+prp(treeModel)
+```
+
+Now let's check how well does the model do on the testing set (for evaluation).
+
+```{r}
+predictRF <- predict(modelRF, testData)
+confusionMatrix(testData$classe, predictRF)
+accuracy <- postResample(predictRF, testData$classe)
+accuracy
+eoose <- 1 - as.numeric(confusionMatrix(testData$classe, predictRF)$overall[1])
+eoose
+```
+
+The estimated accuracy for the model is `r accuracy[1]` and the estimated out-of-sample error is `r eoose`.
+
+## Predicting
+
+Now, we apply the model to the original testing data set downloaded from the data source.
+
+```{r}
+result <- predict(modelRF, test[, -length(names(test))])
+result
+```
+
